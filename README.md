@@ -21,19 +21,22 @@ $ wakalyze 2026/02 1
 
 ## Install
 
+### Homebrew (macOS / Linux)
+
+```bash
+brew tap masaishi/wakalyze
+brew install wakalyze
+```
+
+### Cargo
+
 Requires [Rust](https://www.rust-lang.org/tools/install).
 
 ```bash
 cargo install wakalyze
 ```
 
-Or install from Git:
-
-```bash
-cargo install --git https://github.com/masaishi/wakalyze.git
-```
-
-Or build from source:
+### From source
 
 ```bash
 git clone https://github.com/masaishi/wakalyze.git
