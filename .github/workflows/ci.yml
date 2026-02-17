@@ -24,3 +24,6 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
       - run: cargo build --release
+
+      - name: Check Cargo.lock is up to date
+        run: git diff --exit-code Cargo.lock
