@@ -79,7 +79,7 @@ jobs:
           SHA_DARWIN_X86=$(awk '{print $1}' wakalyze-x86_64-apple-darwin.tar.gz.sha256)
           SHA_LINUX_X86=$(awk '{print $1}' wakalyze-x86_64-unknown-linux-gnu.tar.gz.sha256)
 
-          gh repo clone masaishi/homebrew-wakalyze homebrew-wakalyze
+          git clone https://x-access-token:${GH_TOKEN}@github.com/masaishi/homebrew-wakalyze.git homebrew-wakalyze
           cd homebrew-wakalyze
 
           cat > Formula/wakalyze.rb << EOF
