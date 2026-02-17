@@ -1,0 +1,28 @@
+[package]
+name = "wakalyze"
+version = "0.1.0"
+edition = "2021"
+description = "CLI to list Wakapi working hours per day using the heartbeats API"
+license = "MIT"
+
+[[bin]]
+name = "wakalyze"
+path = "src/main.rs"
+
+[dependencies]
+base64 = "0.22"
+chrono = "0.4"
+clap = { version = "4", features = ["derive"] }
+dirs = "6"
+indicatif = "0.18"
+reqwest = { version = "0.13", features = ["blocking", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[dev-dependencies]
+assert_cmd = "2"
+mockito = "1"
+predicates = "3"
+serial_test = "3.3.1"
+tempfile = "3"
