@@ -24,6 +24,12 @@ $ wakalyze 2026/02 1
 Requires [Rust](https://www.rust-lang.org/tools/install).
 
 ```bash
+cargo install wakalyze
+```
+
+Or install from Git:
+
+```bash
 cargo install --git https://github.com/masaishi/wakalyze.git
 ```
 
@@ -38,7 +44,7 @@ cargo build --release
 
 ## Setup
 
-Get your API key from Wakapi: **Settings → API Key** (e.g. https://wakapi.dev/settings#api_keys or `https://<your-wakapi-instance>/settings#api_keys`).
+Get your API key from Wakapi: Settings → API Key (e.g. https://wakapi.dev/settings#api_keys or `https://<your-wakapi-instance>/settings#api_keys`).
 
 Store credentials in config:
 
