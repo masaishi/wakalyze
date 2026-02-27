@@ -8,8 +8,8 @@ use crate::config::{
     config_path, load_config, load_config_from, mask_secret, save_config_to, Config,
 };
 use crate::core::{
-    build_sessions, filter_sessions, iter_dates, month_last_day, parse_month, week_range,
-    DaySessions, DEFAULT_MAX_GAP_SECONDS,
+    build_sessions, filter_sessions, group_heartbeats_by_local_date, iter_dates, month_last_day,
+    parse_month, week_range, DaySessions, RawHeartbeat, DEFAULT_MAX_GAP_SECONDS,
 };
 use crate::error::{Result, WakalyzeError};
 use crate::format::build_lines;
@@ -239,14 +239,18 @@ pub fn handle_analyze(args: AnalyzeArgs) -> Result<()> {
     }
 
     let client = WakapiClient::new(&base_url, &user, &auth, args.timeout);
-    let dates = iter_dates(start, end);
+
+    // Expand fetch range by ±1 day to capture heartbeats near timezone boundaries
+    let fetch_start = start.pred_opt().unwrap_or(start);
+    let fetch_end = end.succ_opt().unwrap_or(end);
+    let fetch_dates = iter_dates(fetch_start, fetch_end);
 
     let is_terminal = std::io::stderr().is_terminal();
     let pb = if is_terminal {
-        let pb = ProgressBar::new(dates.len() as u64).with_finish(ProgressFinish::AndClear);
+        let pb = ProgressBar::new(fetch_dates.len() as u64).with_finish(ProgressFinish::AndClear);
         pb.set_style(
             ProgressStyle::with_template(
-                "{spinner} Loading heartbeats {bar:30} {pos}/{len} [{elapsed}]",
+                "{spinner} Loading heartbeats {bar:30} {percent}% [{elapsed}]",
             )
             .unwrap(),
         );
@@ -255,16 +259,32 @@ pub fn handle_analyze(args: AnalyzeArgs) -> Result<()> {
         ProgressBar::hidden()
     };
 
-    let mut days = Vec::with_capacity(dates.len());
-    for date in &dates {
+    let mut all_heartbeats: Vec<RawHeartbeat> = Vec::new();
+    for date in &fetch_dates {
         let heartbeats = client.fetch_heartbeats(*date)?;
-        days.push(DaySessions {
-            date: *date,
-            sessions: build_sessions(&heartbeats, max_gap_seconds),
-        });
+        all_heartbeats.extend(heartbeats);
         pb.inc(1);
     }
     pb.finish_and_clear();
+
+    // Deduplicate heartbeats that may appear in adjacent day fetches
+    all_heartbeats.sort_by(|a, b| {
+        a.time
+            .partial_cmp(&b.time)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    all_heartbeats.dedup_by(|a, b| a.time == b.time && a.project == b.project);
+
+    // Regroup by local date and filter to the requested range
+    let grouped = group_heartbeats_by_local_date(all_heartbeats);
+    let days: Vec<DaySessions> = grouped
+        .into_iter()
+        .filter(|(date, _)| *date >= start && *date <= end)
+        .map(|(date, hbs)| DaySessions {
+            date,
+            sessions: build_sessions(&hbs, max_gap_seconds),
+        })
+        .collect();
 
     let days = filter_sessions(&days, args.filter.as_deref());
 
