@@ -69,7 +69,7 @@ pub fn week_range(first_day: NaiveDate, week: u32) -> Result<(NaiveDate, NaiveDa
     if !(1..=6).contains(&week) {
         return Err(WakalyzeError::InvalidWeek);
     }
-    let dow = first_day.weekday().num_days_from_monday() as i64;
+    let dow = first_day.weekday().num_days_from_sunday() as i64;
     let week1_start = first_day - chrono::Duration::days(dow);
     let start = week1_start + chrono::Duration::days(((week - 1) * 7) as i64);
     let end = start + chrono::Duration::days(6);
@@ -308,29 +308,29 @@ mod tests {
 
     #[test]
     fn week_range_week_1_feb_2026() {
-        // Feb 1 2026 is Sunday → week 1 starts on Mon Jan 26
+        // Feb 1 2026 is Sunday → week 1 starts on Sun Feb 1
         let first = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap();
         let (start, end) = week_range(first, 1).unwrap();
-        assert_eq!(start, NaiveDate::from_ymd_opt(2026, 1, 26).unwrap());
-        assert_eq!(end, NaiveDate::from_ymd_opt(2026, 2, 1).unwrap());
+        assert_eq!(start, NaiveDate::from_ymd_opt(2026, 2, 1).unwrap());
+        assert_eq!(end, NaiveDate::from_ymd_opt(2026, 2, 7).unwrap());
     }
 
     #[test]
-    fn week_range_week_5_feb_2026() {
-        // Week 5 spans into March
-        let first = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap();
+    fn week_range_week_5_mar_2026() {
+        // Mar 1 2026 is Sunday → week 5: Sun Mar 29 – Sat Apr 4
+        let first = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
         let (start, end) = week_range(first, 5).unwrap();
-        assert_eq!(start, NaiveDate::from_ymd_opt(2026, 2, 23).unwrap());
-        assert_eq!(end, NaiveDate::from_ymd_opt(2026, 3, 1).unwrap());
+        assert_eq!(start, NaiveDate::from_ymd_opt(2026, 3, 29).unwrap());
+        assert_eq!(end, NaiveDate::from_ymd_opt(2026, 4, 4).unwrap());
     }
 
     #[test]
     fn week_range_first_is_monday() {
-        // Jun 1 2026 is Monday → week 1 starts on Jun 1
+        // Jun 1 2026 is Monday → week 1 starts on Sun May 31
         let first = NaiveDate::from_ymd_opt(2026, 6, 1).unwrap();
         let (start, end) = week_range(first, 1).unwrap();
-        assert_eq!(start, NaiveDate::from_ymd_opt(2026, 6, 1).unwrap());
-        assert_eq!(end, NaiveDate::from_ymd_opt(2026, 6, 7).unwrap());
+        assert_eq!(start, NaiveDate::from_ymd_opt(2026, 5, 31).unwrap());
+        assert_eq!(end, NaiveDate::from_ymd_opt(2026, 6, 6).unwrap());
     }
 
     #[test]
