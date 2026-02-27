@@ -24,6 +24,12 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Set version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i.bak "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
+          rm -f Cargo.toml.bak
+
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
@@ -129,6 +135,11 @@ jobs:
       - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Set version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
 
       - uses: Swatinem/rust-cache@v2
 
