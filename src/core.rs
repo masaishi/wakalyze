@@ -1,13 +1,13 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
-use chrono::{Datelike, NaiveDate};
+use chrono::{Datelike, Local, NaiveDate, TimeZone};
 use serde::Deserialize;
 
 use crate::error::{Result, WakalyzeError};
 
 pub const DEFAULT_MAX_GAP_SECONDS: i64 = 15 * 60;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct RawHeartbeat {
     pub time: Option<f64>,
     pub project: Option<String>,
@@ -108,6 +108,20 @@ pub fn extract_entries(heartbeats: &[RawHeartbeat]) -> Vec<HeartbeatEntry> {
         .collect();
     entries.sort_by_key(|e| e.time);
     entries
+}
+
+pub fn group_heartbeats_by_local_date(
+    heartbeats: Vec<RawHeartbeat>,
+) -> BTreeMap<NaiveDate, Vec<RawHeartbeat>> {
+    let mut map: BTreeMap<NaiveDate, Vec<RawHeartbeat>> = BTreeMap::new();
+    for hb in heartbeats {
+        if let Some(ts) = hb.time {
+            if let Some(dt) = Local.timestamp_opt(ts as i64, 0).single() {
+                map.entry(dt.date_naive()).or_default().push(hb);
+            }
+        }
+    }
+    map
 }
 
 pub fn build_sessions(heartbeats: &[RawHeartbeat], max_gap: i64) -> Vec<Session> {
@@ -647,5 +661,39 @@ mod tests {
         }];
         let result = filter_sessions(&days, Some("bar"));
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn group_heartbeats_by_local_date_basic() {
+        // Two heartbeats 25 hours apart → should land on different local dates
+        let t1 = Local
+            .with_ymd_and_hms(2026, 2, 15, 10, 0, 0)
+            .unwrap()
+            .timestamp() as f64;
+        let t2 = Local
+            .with_ymd_and_hms(2026, 2, 16, 11, 0, 0)
+            .unwrap()
+            .timestamp() as f64;
+        let heartbeats = vec![hb(t1, "proj"), hb(t2, "proj")];
+        let grouped = group_heartbeats_by_local_date(heartbeats);
+        assert_eq!(grouped.len(), 2);
+        assert!(grouped.contains_key(&NaiveDate::from_ymd_opt(2026, 2, 15).unwrap()));
+        assert!(grouped.contains_key(&NaiveDate::from_ymd_opt(2026, 2, 16).unwrap()));
+    }
+
+    #[test]
+    fn group_heartbeats_by_local_date_skips_none_time() {
+        let heartbeats = vec![RawHeartbeat {
+            time: None,
+            project: Some("proj".into()),
+        }];
+        let grouped = group_heartbeats_by_local_date(heartbeats);
+        assert!(grouped.is_empty());
+    }
+
+    #[test]
+    fn group_heartbeats_by_local_date_empty() {
+        let grouped = group_heartbeats_by_local_date(vec![]);
+        assert!(grouped.is_empty());
     }
 }
