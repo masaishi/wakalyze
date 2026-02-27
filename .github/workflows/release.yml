@@ -140,6 +140,8 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
+          rm Cargo.lock
+          cargo generate-lockfile
 
       - uses: Swatinem/rust-cache@v2
 
@@ -147,6 +149,6 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
 
-      - run: cargo publish
+      - run: cargo publish --allow-dirty
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
