@@ -1,6 +1,6 @@
 [package]
 name = "wakalyze"
-version = "0.1.3"
+version = "0.0.0-dev"
 edition = "2021"
 description = "CLI to list Wakapi working hours per day using the heartbeats API"
 license = "MIT"
