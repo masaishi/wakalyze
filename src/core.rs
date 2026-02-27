@@ -69,7 +69,7 @@ pub fn week_range(first_day: NaiveDate, week: u32) -> Result<(NaiveDate, NaiveDa
     if !(1..=6).contains(&week) {
         return Err(WakalyzeError::InvalidWeek);
     }
-    let dow = first_day.weekday().num_days_from_monday() as i64;
+    let dow = first_day.weekday().num_days_from_sunday() as i64;
     let week1_start = first_day - chrono::Duration::days(dow);
     let start = week1_start + chrono::Duration::days(((week - 1) * 7) as i64);
     let end = start + chrono::Duration::days(6);
