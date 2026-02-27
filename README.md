@@ -24,8 +24,7 @@ $ wakalyze 2026/02 1
 ### Homebrew (macOS / Linux)
 
 ```bash
-brew tap masaishi/wakalyze
-brew install wakalyze
+brew install masaishi/wakalyze/wakalyze
 ```
 
 ### Cargo
