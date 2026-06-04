@@ -8,8 +8,9 @@ use crate::config::{
     config_path, load_config, load_config_from, mask_secret, save_config_to, Config,
 };
 use crate::core::{
-    build_sessions, filter_heartbeats, group_heartbeats_by_local_date, iter_dates, month_last_day,
-    parse_month, week_range, DaySessions, RawHeartbeat, DEFAULT_MAX_GAP_SECONDS,
+    absorb_short_sessions, build_sessions, filter_heartbeats, group_heartbeats_by_local_date,
+    iter_dates, month_last_day, parse_month, week_range, DaySessions, RawHeartbeat,
+    DEFAULT_MAX_GAP_SECONDS, DEFAULT_MIN_SESSION_SECONDS,
 };
 use crate::error::{Result, WakalyzeError};
 use crate::format::build_lines;
@@ -63,6 +64,11 @@ pub struct AnalyzeArgs {
     /// Max gap in minutes between heartbeats to treat as continuous work
     #[arg(long, default_value_t = DEFAULT_MAX_GAP_SECONDS as f64 / 60.0)]
     pub max_gap_minutes: f64,
+
+    /// Drop sessions shorter than this many minutes, absorbing them into the
+    /// previous same-project session (0 disables)
+    #[arg(long, default_value_t = DEFAULT_MIN_SESSION_SECONDS as f64 / 60.0)]
+    pub min_minutes: f64,
 }
 
 #[derive(Subcommand)]
@@ -238,6 +244,8 @@ pub fn handle_analyze(args: AnalyzeArgs) -> Result<()> {
         return Err(WakalyzeError::InvalidMaxGap);
     }
 
+    let min_session_seconds = (args.min_minutes * 60.0) as i64;
+
     let client = WakapiClient::new(&base_url, &user, &auth, args.timeout);
 
     // Expand fetch range by ±1 day to capture heartbeats near timezone boundaries
@@ -285,8 +293,12 @@ pub fn handle_analyze(args: AnalyzeArgs) -> Result<()> {
         .filter(|(date, _)| *date >= start && *date <= end)
         .map(|(date, hbs)| DaySessions {
             date,
-            sessions: build_sessions(&hbs, max_gap_seconds),
+            sessions: absorb_short_sessions(
+                build_sessions(&hbs, max_gap_seconds),
+                min_session_seconds,
+            ),
         })
+        .filter(|day| !day.sessions.is_empty())
         .collect();
 
     for line in build_lines(&days, &label) {

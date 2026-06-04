@@ -74,6 +74,7 @@ wakalyze 2026/02 1
 wakalyze 2026/02 --filter "myproject"
 wakalyze 2026/02 --filter "proj-a,proj-b"
 wakalyze 2026/02 --max-gap-minutes 10
+wakalyze 2026/02 --min-minutes 0
 ```
 
 ### Config management
