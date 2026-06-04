@@ -11,6 +11,7 @@ pub const DEFAULT_MAX_GAP_SECONDS: i64 = 15 * 60;
 pub struct RawHeartbeat {
     pub time: Option<f64>,
     pub project: Option<String>,
+    pub entity: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -171,10 +172,10 @@ fn make_session(times: &[i64], project: Option<&str>, max_gap: i64) -> Session {
     }
 }
 
-pub fn filter_sessions(days: &[DaySessions], filter: Option<&str>) -> Vec<DaySessions> {
+pub fn filter_heartbeats(heartbeats: Vec<RawHeartbeat>, filter: Option<&str>) -> Vec<RawHeartbeat> {
     let term = match filter {
         Some(t) if !t.is_empty() => t,
-        _ => return days.to_vec(),
+        _ => return heartbeats,
     };
 
     let needles: Vec<String> = term
@@ -184,28 +185,17 @@ pub fn filter_sessions(days: &[DaySessions], filter: Option<&str>) -> Vec<DaySes
         .collect();
 
     if needles.is_empty() {
-        return days.to_vec();
+        return heartbeats;
     }
 
-    days.iter()
-        .filter_map(|day| {
-            let sessions: Vec<Session> = day
-                .sessions
+    heartbeats
+        .into_iter()
+        .filter(|hb| {
+            let project = hb.project.as_deref().unwrap_or("").to_lowercase();
+            let entity = hb.entity.as_deref().unwrap_or("").to_lowercase();
+            needles
                 .iter()
-                .filter(|s| {
-                    let proj = s.project.as_deref().unwrap_or("").to_lowercase();
-                    needles.iter().any(|needle| proj.contains(needle.as_str()))
-                })
-                .cloned()
-                .collect();
-            if sessions.is_empty() {
-                None
-            } else {
-                Some(DaySessions {
-                    date: day.date,
-                    sessions,
-                })
-            }
+                .any(|needle| project.contains(needle.as_str()) || entity.contains(needle.as_str()))
         })
         .collect()
 }
@@ -220,6 +210,7 @@ mod tests {
         RawHeartbeat {
             time: Some(time),
             project: Some(project.to_string()),
+            entity: None,
         }
     }
 
@@ -414,11 +405,11 @@ mod tests {
             vec![
                 HeartbeatEntry {
                     time: 100,
-                    project: Some("bar".into())
+                    project: Some("bar".into()),
                 },
                 HeartbeatEntry {
                     time: 200,
-                    project: Some("foo".into())
+                    project: Some("foo".into()),
                 },
             ]
         );
@@ -429,6 +420,7 @@ mod tests {
         let heartbeats = vec![RawHeartbeat {
             time: None,
             project: Some("foo".into()),
+            entity: None,
         }];
         assert_eq!(extract_entries(&heartbeats), Vec::<HeartbeatEntry>::new());
     }
@@ -441,7 +433,7 @@ mod tests {
             result,
             vec![HeartbeatEntry {
                 time: 100,
-                project: Some("foo".into())
+                project: Some("foo".into()),
             }]
         );
     }
@@ -451,13 +443,14 @@ mod tests {
         let heartbeats = vec![RawHeartbeat {
             time: Some(100.0),
             project: Some("  ".into()),
+            entity: None,
         }];
         let result = extract_entries(&heartbeats);
         assert_eq!(
             result,
             vec![HeartbeatEntry {
                 time: 100,
-                project: None
+                project: None,
             }]
         );
     }
@@ -467,13 +460,14 @@ mod tests {
         let heartbeats = vec![RawHeartbeat {
             time: Some(100.0),
             project: None,
+            entity: None,
         }];
         let result = extract_entries(&heartbeats);
         assert_eq!(
             result,
             vec![HeartbeatEntry {
                 time: 100,
-                project: None
+                project: None,
             }]
         );
     }
@@ -530,137 +524,83 @@ mod tests {
         assert_eq!(sessions[0].seconds, 300);
     }
 
-    #[test]
-    fn filter_sessions_none_returns_all() {
-        let days = vec![DaySessions {
-            date: NaiveDate::from_ymd_opt(2026, 2, 1).unwrap(),
-            sessions: vec![Session {
-                start: 1,
-                end: 2,
-                seconds: 1,
-                project: Some("foo".into()),
-            }],
-        }];
-        assert_eq!(filter_sessions(&days, None), days);
+    fn hbe(time: f64, project: &str, entity: &str) -> RawHeartbeat {
+        RawHeartbeat {
+            time: Some(time),
+            project: Some(project.to_string()),
+            entity: Some(entity.to_string()),
+        }
+    }
+
+    fn projects_of(heartbeats: &[RawHeartbeat]) -> Vec<Option<String>> {
+        heartbeats.iter().map(|hb| hb.project.clone()).collect()
     }
 
     #[test]
-    fn filter_sessions_empty_returns_all() {
-        let days = vec![DaySessions {
-            date: NaiveDate::from_ymd_opt(2026, 2, 1).unwrap(),
-            sessions: vec![Session {
-                start: 1,
-                end: 2,
-                seconds: 1,
-                project: Some("foo".into()),
-            }],
-        }];
-        assert_eq!(filter_sessions(&days, Some("")), days);
+    fn filter_heartbeats_none_returns_all() {
+        let heartbeats = vec![hb(1.0, "foo")];
+        assert_eq!(
+            filter_heartbeats(heartbeats.clone(), None),
+            heartbeats.clone()
+        );
     }
 
     #[test]
-    fn filter_sessions_matches_substring() {
-        let days = vec![DaySessions {
-            date: NaiveDate::from_ymd_opt(2026, 2, 1).unwrap(),
-            sessions: vec![
-                Session {
-                    start: 1,
-                    end: 2,
-                    seconds: 1,
-                    project: Some("my-project".into()),
-                },
-                Session {
-                    start: 3,
-                    end: 4,
-                    seconds: 1,
-                    project: Some("other".into()),
-                },
-            ],
-        }];
-        let result = filter_sessions(&days, Some("proj"));
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].sessions.len(), 1);
-        assert_eq!(result[0].sessions[0].project, Some("my-project".into()));
+    fn filter_heartbeats_empty_returns_all() {
+        let heartbeats = vec![hb(1.0, "foo")];
+        assert_eq!(
+            filter_heartbeats(heartbeats.clone(), Some("")),
+            heartbeats.clone()
+        );
     }
 
     #[test]
-    fn filter_sessions_case_insensitive() {
-        let days = vec![DaySessions {
-            date: NaiveDate::from_ymd_opt(2026, 2, 1).unwrap(),
-            sessions: vec![Session {
-                start: 1,
-                end: 2,
-                seconds: 1,
-                project: Some("MyProject".into()),
-            }],
-        }];
-        let result = filter_sessions(&days, Some("myproject"));
+    fn filter_heartbeats_matches_project_substring() {
+        let heartbeats = vec![hb(1.0, "my-project"), hb(2.0, "other")];
+        let result = filter_heartbeats(heartbeats, Some("proj"));
+        assert_eq!(projects_of(&result), vec![Some("my-project".into())]);
+    }
+
+    #[test]
+    fn filter_heartbeats_case_insensitive() {
+        let heartbeats = vec![hb(1.0, "MyProject")];
+        let result = filter_heartbeats(heartbeats, Some("myproject"));
         assert_eq!(result.len(), 1);
     }
 
     #[test]
-    fn filter_sessions_comma_separated_match_any() {
-        let days = vec![DaySessions {
-            date: NaiveDate::from_ymd_opt(2026, 2, 1).unwrap(),
-            sessions: vec![
-                Session {
-                    start: 1,
-                    end: 2,
-                    seconds: 1,
-                    project: Some("foo".into()),
-                },
-                Session {
-                    start: 3,
-                    end: 4,
-                    seconds: 1,
-                    project: Some("bar".into()),
-                },
-                Session {
-                    start: 5,
-                    end: 6,
-                    seconds: 1,
-                    project: Some("baz".into()),
-                },
-            ],
-        }];
-        let result = filter_sessions(&days, Some("foo,bar"));
-        assert_eq!(result.len(), 1);
-        let projects: Vec<_> = result[0]
-            .sessions
-            .iter()
-            .map(|s| s.project.clone())
-            .collect();
-        assert_eq!(projects, vec![Some("foo".into()), Some("bar".into())]);
-    }
-
-    #[test]
-    fn filter_sessions_comma_separated_trimmed() {
-        let days = vec![DaySessions {
-            date: NaiveDate::from_ymd_opt(2026, 2, 1).unwrap(),
-            sessions: vec![Session {
-                start: 1,
-                end: 2,
-                seconds: 1,
-                project: Some("bar".into()),
-            }],
-        }];
-        let result = filter_sessions(&days, Some(" , bar , "));
+    fn filter_heartbeats_matches_entity_when_project_does_not() {
+        let heartbeats = vec![hbe(
+            1.0,
+            "kikuvi",
+            "/Users/me/ghq/github.com/org/shizuku-ai/main.rs",
+        )];
+        let result = filter_heartbeats(heartbeats, Some("shizuku"));
         assert_eq!(result.len(), 1);
     }
 
     #[test]
-    fn filter_sessions_removes_empty_days() {
-        let days = vec![DaySessions {
-            date: NaiveDate::from_ymd_opt(2026, 2, 1).unwrap(),
-            sessions: vec![Session {
-                start: 1,
-                end: 2,
-                seconds: 1,
-                project: Some("foo".into()),
-            }],
-        }];
-        let result = filter_sessions(&days, Some("bar"));
+    fn filter_heartbeats_drops_non_matching() {
+        let heartbeats = vec![hbe(1.0, "kikuvi", "/kikuvi/main.rs")];
+        let result = filter_heartbeats(heartbeats, Some("shizuku"));
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn filter_heartbeats_comma_separated_match_any() {
+        let heartbeats = vec![hb(1.0, "foo"), hb(2.0, "bar"), hb(3.0, "baz")];
+        let result = filter_heartbeats(heartbeats, Some("foo,bar"));
+        assert_eq!(
+            projects_of(&result),
+            vec![Some("foo".into()), Some("bar".into())]
+        );
+    }
+
+    #[test]
+    fn filter_heartbeats_comma_separated_trimmed() {
+        let heartbeats = vec![hb(1.0, "bar")];
+        let result = filter_heartbeats(heartbeats, Some(" , bar , "));
+        assert_eq!(result.len(), 1);
     }
 
     #[test]
@@ -686,6 +626,7 @@ mod tests {
         let heartbeats = vec![RawHeartbeat {
             time: None,
             project: Some("proj".into()),
+            entity: None,
         }];
         let grouped = group_heartbeats_by_local_date(heartbeats);
         assert!(grouped.is_empty());
