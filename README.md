@@ -103,7 +103,7 @@ Auth is resolved in this order:
 
 - Time is estimated from heartbeat gaps (<= 15 minutes by default; adjust with `--max-gap-minutes`).
 - Week numbers follow calendar weeks (Monday start). Week 1 is the row containing the 1st of the month, so it may include days from the previous month, and the last week may include days from the next month.
-- The `--filter` flag supports comma-separated terms matched as OR (case-insensitive substrings).
+- The `--filter` flag supports comma-separated terms matched as OR (case-insensitive substrings). Each term is matched against both the project name and the heartbeat entity (e.g. file path). Heartbeats are filtered before sessions are built, so the reported time reflects only the matching activity.
 
 ## Development
 

@@ -8,7 +8,7 @@ use crate::config::{
     config_path, load_config, load_config_from, mask_secret, save_config_to, Config,
 };
 use crate::core::{
-    build_sessions, filter_sessions, group_heartbeats_by_local_date, iter_dates, month_last_day,
+    build_sessions, filter_heartbeats, group_heartbeats_by_local_date, iter_dates, month_last_day,
     parse_month, week_range, DaySessions, RawHeartbeat, DEFAULT_MAX_GAP_SECONDS,
 };
 use crate::error::{Result, WakalyzeError};
@@ -44,7 +44,7 @@ pub struct AnalyzeArgs {
     /// Week of month (1-6)
     pub week: Option<u32>,
 
-    /// Filter by project substring (comma-separated terms = OR)
+    /// Filter by project or entity substring (comma-separated terms = OR)
     #[arg(short, long)]
     pub filter: Option<String>,
 
@@ -275,6 +275,9 @@ pub fn handle_analyze(args: AnalyzeArgs) -> Result<()> {
     });
     all_heartbeats.dedup_by(|a, b| a.time == b.time && a.project == b.project);
 
+    // Filter heartbeats before grouping so sessions reflect only matching activity
+    let all_heartbeats = filter_heartbeats(all_heartbeats, args.filter.as_deref());
+
     // Regroup by local date and filter to the requested range
     let grouped = group_heartbeats_by_local_date(all_heartbeats);
     let days: Vec<DaySessions> = grouped
@@ -285,8 +288,6 @@ pub fn handle_analyze(args: AnalyzeArgs) -> Result<()> {
             sessions: build_sessions(&hbs, max_gap_seconds),
         })
         .collect();
-
-    let days = filter_sessions(&days, args.filter.as_deref());
 
     for line in build_lines(&days, &label) {
         println!("{line}");
