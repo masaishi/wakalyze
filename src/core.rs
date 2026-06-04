@@ -6,6 +6,7 @@ use serde::Deserialize;
 use crate::error::{Result, WakalyzeError};
 
 pub const DEFAULT_MAX_GAP_SECONDS: i64 = 15 * 60;
+pub const DEFAULT_MIN_SESSION_SECONDS: i64 = 60;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct RawHeartbeat {
@@ -170,6 +171,32 @@ fn make_session(times: &[i64], project: Option<&str>, max_gap: i64) -> Session {
         seconds: estimate_seconds(times, max_gap),
         project: project.map(str::to_owned),
     }
+}
+
+/// Removes noise sessions shorter than `min_seconds` by absorbing each into the
+/// immediately preceding session of the same project (extending its end and
+/// summing active seconds). A short session with no same-project predecessor is
+/// dropped. `min_seconds <= 0` disables filtering and returns sessions unchanged.
+pub fn absorb_short_sessions(sessions: Vec<Session>, min_seconds: i64) -> Vec<Session> {
+    if min_seconds <= 0 {
+        return sessions;
+    }
+
+    let mut kept: Vec<Session> = Vec::new();
+    for session in sessions {
+        if session.seconds >= min_seconds {
+            kept.push(session);
+            continue;
+        }
+        match kept.last_mut() {
+            Some(prev) if prev.project == session.project => {
+                prev.end = session.end;
+                prev.seconds += session.seconds;
+            }
+            _ => {} // no same-project predecessor: drop the noise session
+        }
+    }
+    kept
 }
 
 pub fn filter_heartbeats(heartbeats: Vec<RawHeartbeat>, filter: Option<&str>) -> Vec<RawHeartbeat> {
@@ -470,6 +497,70 @@ mod tests {
                 project: None,
             }]
         );
+    }
+
+    fn sess(start: i64, end: i64, seconds: i64, project: &str) -> Session {
+        Session {
+            start,
+            end,
+            seconds,
+            project: Some(project.to_string()),
+        }
+    }
+
+    #[test]
+    fn absorb_short_sessions_merges_into_previous_same_project() {
+        let sessions = vec![sess(0, 600, 600, "foo"), sess(900, 930, 30, "foo")];
+        let result = absorb_short_sessions(sessions, 60);
+        assert_eq!(result, vec![sess(0, 930, 630, "foo")]);
+    }
+
+    #[test]
+    fn absorb_short_sessions_empty() {
+        assert_eq!(absorb_short_sessions(vec![], 60), Vec::<Session>::new());
+    }
+
+    #[test]
+    fn absorb_short_sessions_keeps_long() {
+        let sessions = vec![sess(0, 600, 600, "foo")];
+        assert_eq!(absorb_short_sessions(sessions.clone(), 60), sessions);
+    }
+
+    #[test]
+    fn absorb_short_sessions_keeps_at_threshold() {
+        let sessions = vec![sess(0, 60, 60, "foo")];
+        assert_eq!(absorb_short_sessions(sessions.clone(), 60), sessions);
+    }
+
+    #[test]
+    fn absorb_short_sessions_drops_leading_short() {
+        let sessions = vec![sess(0, 0, 0, "foo"), sess(900, 1500, 600, "foo")];
+        let result = absorb_short_sessions(sessions, 60);
+        assert_eq!(result, vec![sess(900, 1500, 600, "foo")]);
+    }
+
+    #[test]
+    fn absorb_short_sessions_drops_short_of_different_project() {
+        let sessions = vec![sess(0, 600, 600, "foo"), sess(900, 930, 30, "bar")];
+        let result = absorb_short_sessions(sessions, 60);
+        assert_eq!(result, vec![sess(0, 600, 600, "foo")]);
+    }
+
+    #[test]
+    fn absorb_short_sessions_merges_consecutive_shorts() {
+        let sessions = vec![
+            sess(0, 600, 600, "foo"),
+            sess(900, 930, 30, "foo"),
+            sess(1000, 1040, 40, "foo"),
+        ];
+        let result = absorb_short_sessions(sessions, 60);
+        assert_eq!(result, vec![sess(0, 1040, 670, "foo")]);
+    }
+
+    #[test]
+    fn absorb_short_sessions_disabled_when_min_zero() {
+        let sessions = vec![sess(0, 0, 0, "foo"), sess(900, 930, 30, "foo")];
+        assert_eq!(absorb_short_sessions(sessions.clone(), 0), sessions);
     }
 
     #[test]
